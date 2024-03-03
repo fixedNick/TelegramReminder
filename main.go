@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"log"
 	"main/pkg/conv"
+	"main/pkg/conv/filter"
 	"main/pkg/conv/question"
 	"main/pkg/conv/subscriber"
 	"os"
@@ -29,7 +29,7 @@ func main() {
 
 	var token string
 	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), "token") == false {
+		if !strings.Contains(scanner.Text(), "token") {
 			continue
 		}
 		token = strings.Split(scanner.Text(), "=")[1]
@@ -58,7 +58,7 @@ func main() {
 						},
 					},
 				},
-				Filters: question.FILTER_CALLBACK,
+				Filters: filter.FILTER_CALLBACK,
 			},
 		},
 		nil,
@@ -78,7 +78,10 @@ func main() {
 						},
 					},
 				},
-				Filters: question.FILTER_TEXT | question.FILTER_CALLBACK,
+				Filters: filter.FILTER_CALLBACK,
+				BadPrompt: &question.QData{
+					Text: "Не могу понять как твои дела. Пожалуйста, нажми на одну из кнопок выше",
+				},
 			},
 			{
 				Prompt: &question.QData{
@@ -92,7 +95,7 @@ func main() {
 						},
 					},
 				},
-				Filters: question.FILTER_TEXT,
+				Filters: filter.FILTER_TEXT,
 			},
 		},
 		startHandler,
@@ -108,42 +111,5 @@ func main() {
 
 	for update := range updates {
 		c.HandleUpdate(&update)
-	}
-}
-
-func HandleCallbackQuery(bot *tgbotapi.BotAPI, cq *tgbotapi.CallbackQuery) {
-	bot.AnswerCallbackQuery(tgbotapi.CallbackConfig{CallbackQueryID: cq.ID, ShowAlert: false})
-}
-
-func HandleCommand(bot *tgbotapi.BotAPI, chatId int64, cmd string) {
-	switch cmd {
-	case "start", "menu":
-		// start conv
-		startKeyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Список всех ваших событий", "callback_all_dates")),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Добавить", "callback_add_date"),
-				tgbotapi.NewInlineKeyboardButtonData("Ближайшие события", "callback_nearest_dates"),
-			),
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Настройки", "callback_settings")),
-		)
-		msg := tgbotapi.NewMessage(chatId, "Главное меню")
-		msg.ReplyMarkup = startKeyboard
-		bot.Send(msg)
-	case "help":
-		bot.Send(tgbotapi.NewMessage(chatId,
-			` Основная команда для работы - это меню ( /menu ).
-В меню есть несколько кнопок:
-Список ваших дат - Показывает все даты, которые вы добавили для напоминания
-Добавить - Добавляет дату для напоминания
-Ближайшие даты - показывает 4 (по-умолчанию) ближайших события	
-`))
-	default:
-		bot.Send(
-			tgbotapi.NewMessage(
-				chatId,
-				fmt.Sprintf("К сожалению, я не умею использовать команду /%s\nИспользуйте /help для помощи или воспользуйтесь командами из быстрого доступа слева снизу.", cmd),
-			),
-		)
 	}
 }

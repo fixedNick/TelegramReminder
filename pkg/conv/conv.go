@@ -2,8 +2,9 @@ package conv
 
 import (
 	"fmt"
-	"main/pkg/conv/question"
+	"main/pkg/conv/filter"
 	"main/pkg/conv/subscriber"
+	"main/pkg/conv/updtypes"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
@@ -32,38 +33,54 @@ func (c *Command) Subscribe(command string, subscriber *subscriber.Subscriber) {
 	c.Subscribers[command] = subscriber
 }
 
-const (
-	_TYPE_MESSAGE  = 0
-	_TYPE_CALLBACK = 1
-)
-
 func (cm *ConversationsManager) HandleUpdate(update *tgbotapi.Update) {
 	// if received command or data of callback
 	// check do we handle this command
 	// -> use notify to start handling command
 
-	var updateType uint
+	var (
+		updateType   uint
+		chatId       int64
+		responseText string
+		client       *subscriber.Client
+	)
 
 	switch {
 	case update.Message != nil && update.Message.IsCommand():
-		updateType = _TYPE_MESSAGE
+		updateType = updtypes.TYPE_MESSAGE
+
+		chatId = update.Message.Chat.ID
+		responseText = update.Message.Text
+
 		cmd := fmt.Sprintf("/%s", update.Message.Command())
 		if _, exist := cm.CommandObserver.Subscribers[cmd]; exist {
-			cm.HandleCommand(cmd, update.Message.Chat.ID, update)
+			cm.HandleCommand(cmd, chatId, update)
 			return
 		}
 	case update.CallbackQuery != nil:
-		updateType = _TYPE_CALLBACK
+
+		updateType = updtypes.TYPE_CALLBACK
+		chatId = update.CallbackQuery.Message.Chat.ID
+		responseText = update.CallbackQuery.Data
+
 		cm.Bot.AnswerCallbackQuery(tgbotapi.CallbackConfig{CallbackQueryID: update.CallbackQuery.ID, ShowAlert: false})
 		if _, exist := cm.CommandObserver.Subscribers[update.CallbackQuery.Data]; exist {
-			cm.HandleCommand(update.CallbackQuery.Data, update.CallbackQuery.Message.Chat.ID, update)
+			cm.HandleCommand(update.CallbackQuery.Data, chatId, update)
 			return
 		}
+	case update.Message != nil:
+		chatId = update.Message.Chat.ID
+		responseText = update.Message.Text
 	}
 
-	// else
-	// handle message as response to client active command
-	cm.handleResponse(update, updateType)
+	if _, exist := cm.Clients[chatId]; !exist {
+		fmt.Println("Received non-command response from client as first message?")
+		return
+	}
+
+	client = cm.Clients[chatId]
+
+	cm.handleResponse(client, responseText, updateType)
 }
 
 func (cm *ConversationsManager) HandleCommand(cmd string, chatId int64, update *tgbotapi.Update) {
@@ -74,7 +91,7 @@ func (cm *ConversationsManager) HandleCommand(cmd string, chatId int64, update *
 			activeClient.CurrentHandler = handler
 			clear(activeClient.Responses)
 		} else {
-			activeClient = &subscriber.Client{ChatId: chatId}
+			activeClient = &subscriber.Client{ChatId: chatId, CurrentHandler: handler}
 			cm.Clients[chatId] = activeClient
 		}
 
@@ -84,40 +101,20 @@ func (cm *ConversationsManager) HandleCommand(cmd string, chatId int64, update *
 	}
 }
 
-func (cm *ConversationsManager) handleResponse(update *tgbotapi.Update, updateType uint) {
+func (cm *ConversationsManager) handleResponse(client *subscriber.Client, responseText string, updateType uint) {
 	// handle responses to questions
-	// ...
-
-	var chatId int64
-	var responseText string
-
-	if updateType == _TYPE_MESSAGE {
-		chatId = update.Message.Chat.ID
-		responseText = update.Message.Text
-	} else {
-		chatId = update.CallbackQuery.Message.Chat.ID
-		responseText = update.CallbackQuery.Data
-	}
-
-	if _, exist := cm.Clients[chatId]; !exist {
-		fmt.Println("Received non-command response from client as first message?")
-		return
-	}
-	client := cm.Clients[chatId]
 
 	responseIdx := len(client.Responses)
 	currentQuestion := client.CurrentHandler.Questions[responseIdx]
 
 	// check is response valid
-
-	// invalid response
-	// TODO: Перепроверить и переделать фильтры на бит маски, чтобы CMD и TEXT выключали друг друга при активации
-	if (((currentQuestion.Filters & question.FILTER_CALLBACK) == 0) && updateType == _TYPE_CALLBACK) ||
-		((responseText[0] != '/') && (currentQuestion.Filters&question.FILTER_CMD) != 0) ||
-		((responseText[0] == '/') && (currentQuestion.Filters&question.FILTER_TEXT) != 0) {
-		badPrompt := tgbotapi.NewMessage(client.ChatId, currentQuestion.BadPrompt.Text)
-		badPrompt.ReplyMarkup = currentQuestion.BadPrompt.Markup
-		cm.Bot.Send(badPrompt)
+	if !filter.IsValid(currentQuestion.Filters, updateType, responseText) {
+		if currentQuestion.BadPrompt != nil {
+			badPrompt := tgbotapi.NewMessage(client.ChatId, currentQuestion.BadPrompt.Text)
+			badPrompt.ReplyMarkup = currentQuestion.BadPrompt.Markup
+			cm.Bot.Send(badPrompt)
+		}
+		return
 	}
 	client.Responses = append(client.Responses, responseText)
 
@@ -143,11 +140,4 @@ func (cm *ConversationsManager) handleResponse(update *tgbotapi.Update, updateTy
 	nextMessage := tgbotapi.NewMessage(client.ChatId, nextQuestion.Prompt.Text)
 	nextMessage.ReplyMarkup = nextQuestion.Prompt.Markup
 	cm.Bot.Send(nextMessage)
-	// - get handler
-	// - is received answer good?
-	// - save response
-	// get next question | SWITCH on Provided handler and send handle his command
-	// update data about current step
-	// send next question
-
 }
