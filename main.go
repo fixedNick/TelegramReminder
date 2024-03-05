@@ -6,6 +6,7 @@ import (
 	"main/pkg/conv"
 	"main/pkg/conv/filter"
 	"main/pkg/conv/question"
+	"main/pkg/conv/sql"
 	"main/pkg/conv/subscriber"
 	"os"
 	"strings"
@@ -42,7 +43,15 @@ func main() {
 
 	bot, _ := tgbotapi.NewBotAPI(token)
 
-	c := conv.New(bot)
+	c := conv.New(
+		bot,
+		&sql.Sql{
+			Host:     "",
+			User:     "root",
+			Password: "",
+			DBName:   "reminder",
+		},
+	)
 
 	// create handlers
 	startHandler := subscriber.NewHandler(
@@ -57,6 +66,9 @@ func main() {
 							),
 						},
 					},
+				},
+				BadPrompt: &question.QData{
+					Text: "К сожалению я не могу распознать ваше сообщение. Для дальнейшей работы, пожалуйста, выбери пункт из меню.",
 				},
 				Filters: filter.FILTER_CALLBACK,
 			},
@@ -104,6 +116,8 @@ func main() {
 	c.CommandObserver.Subscribe("/start", startHandler)
 
 	// bot.Debug = true
+
+	c.AssociateClienthWithHandlers()
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 3

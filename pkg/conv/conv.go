@@ -2,9 +2,12 @@ package conv
 
 import (
 	"fmt"
+	"log"
 	"main/pkg/conv/filter"
+	"main/pkg/conv/sql"
 	"main/pkg/conv/subscriber"
 	"main/pkg/conv/updtypes"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
@@ -13,15 +16,19 @@ type ConversationsManager struct {
 	CommandObserver *Command
 	Clients         map[int64]*subscriber.Client
 	Bot             *tgbotapi.BotAPI
+	DB              *sql.Sql
 }
 
-func New(bot *tgbotapi.BotAPI) *ConversationsManager {
+func New(bot *tgbotapi.BotAPI, db *sql.Sql) *ConversationsManager {
+	sql.Init(db)
+
 	return &ConversationsManager{
 		CommandObserver: &Command{
 			Subscribers: make(map[string]*subscriber.Subscriber),
 		},
-		Clients: make(map[int64]*subscriber.Client),
+		Clients: *db.GetClientsFromDB(),
 		Bot:     bot,
+		DB:      db,
 	}
 }
 
@@ -37,6 +44,8 @@ func (cm *ConversationsManager) HandleUpdate(update *tgbotapi.Update) {
 	// if received command or data of callback
 	// check do we handle this command
 	// -> use notify to start handling command
+
+	// checks is client in localdb
 
 	var (
 		updateType   uint
@@ -91,9 +100,33 @@ func (cm *ConversationsManager) HandleCommand(cmd string, chatId int64, update *
 			activeClient.CurrentHandler = handler
 			clear(activeClient.Responses)
 		} else {
+
+			// New client
+			// Add client to sql
+			// Add client ot local storage (cm.Clients)
+
+			var (
+				fullName string
+				domain   string
+			)
+
+			if update.Message != nil {
+				fullName = strings.TrimSpace(fmt.Sprintf("%s %s", update.Message.From.FirstName, update.Message.From.LastName))
+				domain = update.Message.From.UserName
+			} else {
+				fullName = strings.TrimSpace(fmt.Sprintf("%s %s", update.CallbackQuery.From.FirstName, update.CallbackQuery.From.LastName))
+				domain = update.CallbackQuery.From.UserName
+			}
+			cm.DB.AddClient(chatId, fullName, &domain, &cmd)
+
 			activeClient = &subscriber.Client{ChatId: chatId, CurrentHandler: handler}
 			cm.Clients[chatId] = activeClient
 		}
+
+		// TODO: Refactor Handlers to one object
+		// TODO: Add client funcs to manipulate states
+		activeClient.HandlerCommand = cmd
+		cm.DB.UpdateClientHandler(chatId, cmd)
 
 		handler.HandleCommand(activeClient, cm.Bot)
 		// get response from gorutine and set next step or send bad feedback
@@ -116,7 +149,10 @@ func (cm *ConversationsManager) handleResponse(client *subscriber.Client, respon
 		}
 		return
 	}
+
+	// Response is valid, update local and db storages
 	client.Responses = append(client.Responses, responseText)
+	cm.DB.AddClientResponse(client.ChatId, responseText)
 
 	// check is it last question
 	if len(client.CurrentHandler.Questions) == responseIdx+1 {
@@ -140,4 +176,19 @@ func (cm *ConversationsManager) handleResponse(client *subscriber.Client, respon
 	nextMessage := tgbotapi.NewMessage(client.ChatId, nextQuestion.Prompt.Text)
 	nextMessage.ReplyMarkup = nextQuestion.Prompt.Markup
 	cm.Bot.Send(nextMessage)
+}
+
+func (cm *ConversationsManager) AssociateClienthWithHandlers() {
+	for _, client := range cm.Clients {
+		if client.HandlerCommand == "" {
+			continue
+		}
+
+		if associatedHandler, exist := cm.CommandObserver.Subscribers[client.HandlerCommand]; exist {
+			client.CurrentHandler = associatedHandler
+			continue
+		}
+
+		log.Printf("Cannot associate current handler for client %d. Command handler is %s.", client.ChatId, client.HandlerCommand)
+	}
 }
