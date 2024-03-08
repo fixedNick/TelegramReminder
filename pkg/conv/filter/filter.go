@@ -2,7 +2,9 @@ package filter
 
 import (
 	"main/pkg/conv/updtypes"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // TODO: USE THIS IN INVALID CHECK IN conv.go
@@ -34,12 +36,16 @@ func isTime(text string) bool {
 	delimiters := []rune{':', ' '}
 	for _, delimiter := range delimiters {
 		if splitted := strings.Split(text, string(delimiter)); len(splitted) == 2 {
-			return true
+			hours, hErr := strconv.Atoi(splitted[0])
+			minutes, mErr := strconv.Atoi(splitted[1])
+			return (hours >= 0 && hours <= 24) && hErr == nil && mErr == nil && (minutes >= 0 && minutes <= 60)
 		}
 	}
 	return false
 }
 
+// TODO:
+// Add exceptions and handling them to understand why is date or time is invalid
 func isDate(text string) bool {
 	delimiters := []rune{':', '/', ' ', '\\'}
 
@@ -58,7 +64,28 @@ func isDate(text string) bool {
 
 	for _, delimiter := range delimiters {
 		if splitted := strings.Split(text, string(delimiter)); len(splitted) == 3 && isDateValid(splitted) {
-			return true
+
+			// is year valid
+			year, err := strconv.Atoi(splitted[2])
+			if err != nil {
+				return false
+			}
+
+			// is month valid
+			month, err := strconv.Atoi(splitted[1])
+			if err != nil || month < 0 || month > 12 {
+				return false
+			}
+
+			// is days valid
+			day, err := strconv.Atoi(splitted[0])
+			if err != nil {
+				return false
+			}
+
+			// is month have these days
+			t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+			return t.Day() == day
 		}
 	}
 	return false
