@@ -7,21 +7,19 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-type CommandSubscriber interface {
-	HandleCommand(activeClient *Client, bot *tgbotapi.BotAPI)
-}
-
 type Subscriber struct {
-	Questions []question.Question
-	ProvideTo *Subscriber
+	Questions  []question.Question
+	ProvideTo  *Subscriber
+	FinishFunc func(client *Client, bot *tgbotapi.BotAPI)
 	// TODO:
 	// Добавить поле Message, Которое будет отослано после завершения диалога с данным подсписчиком
 }
 
-func NewHandler(questions []question.Question, provideTo *Subscriber) *Subscriber {
+func NewHandler(questions []question.Question, provideTo *Subscriber, finishFunc func(client *Client, bot *tgbotapi.BotAPI)) *Subscriber {
 	return &Subscriber{
-		Questions: questions,
-		ProvideTo: provideTo,
+		Questions:  questions,
+		ProvideTo:  provideTo,
+		FinishFunc: finishFunc,
 	}
 }
 

@@ -74,6 +74,7 @@ func main() {
 			},
 		},
 		nil,
+		nil,
 	)
 
 	addEventHandler := subscriber.NewHandler(
@@ -111,6 +112,9 @@ func main() {
 			},
 		},
 		startHandler,
+		func(client *subscriber.Client, bot *tgbotapi.BotAPI) {
+			log.Printf("Done for client %d, with responses: %v", client.ChatId, client.Responses)
+		},
 	)
 	c.CommandObserver.Subscribe("/addevent", addEventHandler)
 	c.CommandObserver.Subscribe("/start", startHandler)

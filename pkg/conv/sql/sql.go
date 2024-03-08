@@ -176,7 +176,20 @@ func (s *Sql) UpdateClientHandler(telegram_id int64, handlerCommand string) erro
 }
 
 func (s *Sql) DeleteClientResponses(telegram_id int64) error {
-	panic("implement me")
+	db := s.open()
+	deleteStmt, err := db.Prepare("DELETE FROM clients_responses WHERE client_telegram_id = ?")
+	if err != nil {
+		log.Printf("Cannot prepare query for delete all client's responses for client with telegram_id: %d. Error: %v", telegram_id, err)
+		return err
+	}
+
+	defer deleteStmt.Close()
+	_, err = deleteStmt.Exec(telegram_id)
+	if err != nil {
+		log.Printf("Cannot execute delete all client's responses for client with telegram_id: %d. Error: %v", telegram_id, err)
+		return err
+	}
+	return nil
 }
 
 //
@@ -260,8 +273,8 @@ func (s *Sql) GetClientsFromDB() *map[int64]*subscriber.Client {
 		}
 
 		clients[tid] = &subscriber.Client{ChatId: tid, HandlerCommand: current_handler}
+		// TODO: associate client with Handler [Requires ConversationManager object]
 	}
-	// TODO: GET HANDLER ID
 
 	responsesCount := 0
 	for _, client := range clients {

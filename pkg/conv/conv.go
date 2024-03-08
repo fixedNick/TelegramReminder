@@ -127,6 +127,7 @@ func (cm *ConversationsManager) HandleCommand(cmd string, chatId int64, update *
 		// TODO: Add client funcs to manipulate states
 		activeClient.HandlerCommand = cmd
 		cm.DB.UpdateClientHandler(chatId, cmd)
+		cm.DB.DeleteClientResponses(chatId)
 
 		handler.HandleCommand(activeClient, cm.Bot)
 		// get response from gorutine and set next step or send bad feedback
@@ -159,15 +160,19 @@ func (cm *ConversationsManager) handleResponse(client *subscriber.Client, respon
 
 		mmm := tgbotapi.NewMessage(client.ChatId, fmt.Sprintf("Отлично! Ваши данные получены!\n%v", client.Responses))
 		cm.Bot.Send(mmm)
-		clear(client.Responses)
-		client.Responses = []string{}
 		// provide to next handler
 		if client.CurrentHandler.ProvideTo != nil {
-			// TODO: save responses
-			client.CurrentHandler = client.CurrentHandler.ProvideTo
 			client.CurrentHandler.HandleCommand(client, cm.Bot)
+			// TODO: Proceed operation, ex: Add Important Date
+			if client.CurrentHandler.FinishFunc != nil {
+				client.CurrentHandler.FinishFunc(client, cm.Bot)
+			}
+			client.CurrentHandler = client.CurrentHandler.ProvideTo
+			cm.DB.DeleteClientResponses(client.ChatId)
 			// TODO: send finish message
 		}
+		clear(client.Responses)
+		client.Responses = []string{}
 		return
 	}
 
