@@ -62,7 +62,14 @@ func main() {
 					Markup: &tgbotapi.InlineKeyboardMarkup{
 						InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
 							tgbotapi.NewInlineKeyboardRow(
-								tgbotapi.NewInlineKeyboardButtonData("Добавить дату", "/addevent"),
+								tgbotapi.NewInlineKeyboardButtonData("Список всех ваших событий", "/incoming"),
+							),
+							tgbotapi.NewInlineKeyboardRow(
+								tgbotapi.NewInlineKeyboardButtonData("Добавить новое событие", "/addevent"),
+								tgbotapi.NewInlineKeyboardButtonData("Ближайшие события", "/nearest"),
+							),
+							tgbotapi.NewInlineKeyboardRow(
+								tgbotapi.NewInlineKeyboardButtonData("Настройки", "/settings"),
 							),
 						},
 					},
@@ -81,39 +88,28 @@ func main() {
 		[]question.Question{
 			{
 				Prompt: &question.QData{
-					Text: "Как у тебя дела? Выбери одно или просто напиши в чат.",
-					Markup: &tgbotapi.InlineKeyboardMarkup{
-						InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
-							tgbotapi.NewInlineKeyboardRow(
-								tgbotapi.NewInlineKeyboardButtonData("Хорошо", "callback_good"),
-								tgbotapi.NewInlineKeyboardButtonData("Неоч", "callback_bad"),
-							),
-						},
-					},
+					Text: "Как назовем ваше событие? Например: 'День рождение начальника', 'Запись к терапевту'",
 				},
-				Filters: filter.FILTER_CALLBACK,
+				Filters: filter.FILTER_TEXT,
 				BadPrompt: &question.QData{
-					Text: "Не могу понять как твои дела. Пожалуйста, нажми на одну из кнопок выше",
+					Text: "Пожалуйста, введите корректное название текстом",
 				},
 			},
 			{
 				Prompt: &question.QData{
-					Text: "С делами разобрались, чо по чем (text only)",
-					Markup: &tgbotapi.ReplyKeyboardMarkup{
-						Keyboard: [][]tgbotapi.KeyboardButton{
-							tgbotapi.NewKeyboardButtonRow(
-								tgbotapi.NewKeyboardButton("Ну кирпичОм"),
-								tgbotapi.NewKeyboardButton("Фиг с эти вРачОм"),
-							),
-						},
-					},
+					Text: "Добавьте описание событию, чтобы не забыть детали, когда наступит момент X",
 				},
 				Filters: filter.FILTER_TEXT,
+			},
+			{
+				Prompt: &question.QData{
+					Text: "Напишите",
+				},
 			},
 		},
 		startHandler,
 		func(client *subscriber.Client, bot *tgbotapi.BotAPI) {
-			log.Printf("Done for client %d, with responses: %v", client.ChatId, client.Responses)
+			bot.Send(tgbotapi.NewMessage(client.ChatId, "Date successfully added"))
 		},
 	)
 	c.CommandObserver.Subscribe("/addevent", addEventHandler)
